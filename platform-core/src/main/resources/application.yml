@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: platform-core
+  datasource:
+    url: jdbc:postgresql://localhost:5432/transactions
+    username: transactions
+    password: transactions
+    hikari:
+      maximum-pool-size: 16
+      minimum-idle: 4
+      connection-timeout: 2000
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: localhost:19092
+    consumer:
+      group-id: platform-core
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        max.poll.records: 500
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 10000
+        heartbeat.interval.ms: 3000
+    listener:
+      ack-mode: record
+      concurrency: 4
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
+platform-core:
+  kafka-topic: transaction-submitted
+  finalizer-fixed-delay-ms: 75
+  finalize-batch-size: 500

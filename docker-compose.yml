@@ -1,0 +1,74 @@
+services:
+  postgres:
+    # ECR Public mirror of Docker Official Image — avoids Docker Hub blob CDN (Cloudflare R2)
+    # when that host is unreachable from your network/PC.
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+    environment:
+      POSTGRES_DB: transactions
+      POSTGRES_USER: transactions
+      POSTGRES_PASSWORD: transactions
+    ports:
+      - "5432:5432"
+    cpus: "1.0"
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transactions -d transactions"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    command:
+      - redpanda
+      - start
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://kafka:9092,external://localhost:19092
+      - --smp
+      - "1"
+      - --memory
+      - 768M
+      - --mode
+      - dev-container
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"
+    cpus: "1.0"
+    mem_limit: 1g
+
+  platform-core:
+    build:
+      context: .
+      dockerfile: platform-core/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/transactions
+      SPRING_DATASOURCE_USERNAME: transactions
+      SPRING_DATASOURCE_PASSWORD: transactions
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    cpus: "1.0"
+    mem_limit: 768m
+
+  data-generator:
+    build:
+      context: .
+      dockerfile: data-generator/Dockerfile
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      TOPIC: transaction-submitted
+      RATE: 1000
+      DURATION: 60
+      # How long to keep retrying producer construction when Kafka DNS/readiness isn't there yet.
+      # Set to 0 to retry forever.
+      KAFKA_CONNECT_TIMEOUT_SECONDS: 600
+    cpus: "0.5"
+    mem_limit: 256m
